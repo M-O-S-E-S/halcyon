@@ -419,7 +419,8 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             return false;
         }
 
-        public ulong GetGroupPowers(UUID groupID)
+        // Returns null if not in the group at all.
+        public ulong? GetGroupPowersOrNull(UUID groupID)
         {
             if (m_groupPowers != null)
             {
@@ -433,7 +434,11 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 }
             }
 
-            return 0;
+            return null;
+        }
+        public ulong GetGroupPowers(UUID groupID)
+        {
+            return GetGroupPowersOrNull(groupID) ?? 0;
         }
 
         public void SetGroupPowers(IEnumerable<AgentGroupData> groupPowers)
@@ -1797,6 +1802,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
 
             mapReply.AgentData.AgentID = AgentId;
             mapReply.Data = new MapBlockReplyPacket.DataBlock[mapBlocks2.Length];
+            mapReply.Size = new MapBlockReplyPacket.SizeBlock[mapBlocks2.Length];
             mapReply.AgentData.Flags = flag;
 
             for (int i = 0; i < mapBlocks2.Length; i++)
@@ -1811,6 +1817,10 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 mapReply.Data[i].RegionFlags = mapBlocks2[i].RegionFlags;
                 mapReply.Data[i].Access = mapBlocks2[i].Access;
                 mapReply.Data[i].Agents = mapBlocks2[i].Agents;
+
+                mapReply.Size[i] = new MapBlockReplyPacket.SizeBlock();
+                mapReply.Size[i].SizeX = (ushort)Constants.RegionSize;
+                mapReply.Size[i].SizeY = (ushort)Constants.RegionSize;
             }
             OutPacket(mapReply, ThrottleOutPacketType.Land);
         }
@@ -1942,6 +1952,11 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 FlushExpiredKills();
             }
 
+            SendNonPermanentKillObject(regionHandle, localID);
+        }
+
+        public void SendNonPermanentKillObject(ulong regionHandle, uint localID)
+        {
             KillObjectPacket kill = (KillObjectPacket)PacketPool.Instance.GetPacket(PacketType.KillObject);
             // TODO: don't create new blocks if recycling an old packet
             kill.ObjectData = new KillObjectPacket.ObjectDataBlock[1];
@@ -1952,17 +1967,8 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             OutPacket(kill, ThrottleOutPacketType.Task);
         }
 
-        public void SendKillObjects(ulong regionHandle, uint[] localIDs)
+        public void SendNonPermanentKillObjects(ulong regionHandle, uint[] localIDs)
         {
-            lock (m_primUpdatesLock)
-            {
-                for (int i = 0; i < localIDs.Length; i++)
-                {
-                    _pastKills[localIDs[i]] = new KillRecord(localIDs[i]);
-                }
-                FlushExpiredKills();
-            }
-
             for (int i = 0; i < localIDs.Length; i += 10)
             {
                 int amt = Math.Min(localIDs.Length - i, 10);
@@ -1978,6 +1984,20 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 kill.Header.Zerocoded = true;
                 OutPacket(kill, ThrottleOutPacketType.Task);
             }
+        }
+
+        public void SendKillObjects(ulong regionHandle, uint[] localIDs)
+        {
+            lock (m_primUpdatesLock)
+            {
+                for (int i = 0; i < localIDs.Length; i++)
+                {
+                    _pastKills[localIDs[i]] = new KillRecord(localIDs[i]);
+                }
+                FlushExpiredKills();
+            }
+
+            SendNonPermanentKillObjects(regionHandle, localIDs);
         }
 
         private void FlushExpiredKills()
@@ -3032,15 +3052,6 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                 limit = AvatarWearable.MAX_WEARABLES;
             return System.Math.Min(limit, actual);
         }
-        // This one is required, otherwise the viewer may not draw the avatar at all (cloud).
-        public int MaxVisualParams()
-        {
-            if (_clientVersion.Contains("InWorldz Release 1.") || _clientVersion.Contains("Imprudence"))
-                return AvatarAppearance.VISUALPARAM_COUNT_1X;    // 15 out of 16, 1.x does not support physics layers
-            
-            // Assume anything else can handle everything we support.
-            return AvatarAppearance.VISUALPARAM_COUNT;
-        }
 
         public void SendWearables(AvatarWearable[] wearables, int serial)
         {
@@ -3068,7 +3079,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             OutPacket(aw, ThrottleOutPacketType.Task);
         }
 
-        public void SendAppearance(AvatarAppearance app)
+        public void SendAppearance(AvatarAppearance app, Vector3 hover)
         {
             // UUID agentID, byte[] visualParams, byte[] textureEntry)
             // m_appearance.Owner, m_appearance.VisualParams, m_appearance.Texture.GetBytes()
@@ -3081,12 +3092,7 @@ namespace OpenSim.Region.ClientStack.LindenUDP
             }
 
             AvatarAppearancePacket avp = (AvatarAppearancePacket)PacketPool.Instance.GetPacket(PacketType.AvatarAppearance);
-            // TODO: don't create new blocks if recycling an old packet
-            int clientParamsLength = MaxVisualParams();
-
-            if (clientParamsLength > app.VisualParams.Length)
-                clientParamsLength = app.VisualParams.Length;
-
+            int clientParamsLength = app.VisualParams.Length;
             avp.VisualParam = new AvatarAppearancePacket.VisualParamBlock[clientParamsLength];
             avp.ObjectData.TextureEntry = app.Texture.GetBytes();
 
@@ -3110,7 +3116,9 @@ namespace OpenSim.Region.ClientStack.LindenUDP
                     }
                 };
 
-            // TODO Add AvatarHoverPacket block here 
+            avp.AppearanceHover = new AvatarAppearancePacket.AppearanceHoverBlock[1];
+            avp.AppearanceHover[0] = new AvatarAppearancePacket.AppearanceHoverBlock();
+            avp.AppearanceHover[0].HoverHeight = hover;
 
             avp.Sender.IsTrial = false;
             avp.Sender.ID = app.Owner;

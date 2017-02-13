@@ -33,6 +33,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using OpenMetaverse;
 using OpenSim.Framework;
 using OpenMetaverse.StructuredData;
 
@@ -79,6 +80,10 @@ namespace InWorldz.Testing
         public ulong GetGroupPowers(OpenMetaverse.UUID groupID)
         {
             return 0;
+        }
+        public ulong? GetGroupPowersOrNull(OpenMetaverse.UUID groupID)
+        {
+            return null;
         }
 
         public bool IsGroupMember(OpenMetaverse.UUID GroupID)
@@ -607,24 +612,34 @@ namespace InWorldz.Testing
             
         }
 
-        public void SendAppearance(AvatarAppearance app)
+        public void SendAppearance(AvatarAppearance app, Vector3 hover)
         {
             
         }
 
         public void SendStartPingCheck(byte seq)
         {
-            
+
         }
 
         public void SendKillObject(ulong regionHandle, uint localID)
         {
-            
+
         }
 
-        public void SendKillObjects(ulong regionHandle, uint[] localID)
+        public void SendKillObjects(ulong regionHandle, uint[] localIDs)
         {
-            
+
+        }
+
+        public void SendNonPermanentKillObject(ulong regionHandle, uint localID)
+        {
+
+        }
+
+        public void SendNonPermanentKillObjects(ulong regionHandle, uint[] localIDs)
+        {
+
         }
 
         public void SendAnimations(OpenMetaverse.UUID[] animID, int[] seqs, OpenMetaverse.UUID sourceAgentId, OpenMetaverse.UUID[] objectIDs)
